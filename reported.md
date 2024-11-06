@@ -61,6 +61,7 @@ venv\Scripts\activate
 ## flaskをインストール
 ```
 pip install Flask
+pip install pyjwt
 ```
 
 
