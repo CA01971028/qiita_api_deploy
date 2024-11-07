@@ -72,5 +72,8 @@ $env:FLASK_APP = "main"
 
 ## flaskを起動
 ```
+$env:DB_USER=""
+$env:DB_PASSWORD=""
+$env:DB_NAME=""
 flask run
 ```

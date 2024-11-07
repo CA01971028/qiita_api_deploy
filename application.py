@@ -6,6 +6,7 @@ import datetime
 from functools import wraps
 import json
 import logging
+import os
 
 # ログ設定
 logging.basicConfig(level=logging.DEBUG)
@@ -17,9 +18,9 @@ CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://local
 
 # Azure Database for MySQL 接続設定
 DB_HOST = 'qiita.mysql.database.azure.com'  # Azure MySQL のホスト
-DB_USER = 'jugon'
-DB_PASSWORD = 'aA85208520'
-DB_NAME = 'qiita'
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_NAME = os.getenv('DB_NAME')
 
 # MySQL 接続関数
 def get_db_connection():
