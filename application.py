@@ -7,6 +7,7 @@ from functools import wraps
 import json
 import logging
 import os
+from functools import lru_cache
 
 # ログ設定
 logging.basicConfig(level=logging.DEBUG)
