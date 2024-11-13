@@ -34,7 +34,7 @@ def get_db_connection():
     )
     return connection
 
-# セッション用のデコレータ
+# セッション
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -47,211 +47,172 @@ def token_required(f):
             data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired!'}), 403
-        except jwt.InvalidTokenError:
-            return jsonify({'error': 'Invalid token!'}), 403
+        except Exception as e:
+            return jsonify({'error': 'Token is invalid!', 'details': str(e)}), 403
 
         return f(*args, **kwargs)
-
+    
     return decorated
+# セッション名前の返答
+@lru_cache(maxsize=128)
+def decode_jwt(token):
+    return jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
 
-# ログインしたユーザー名とIDを返すデコレータ
 def token(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.cookies.get('myapp_token')
-
+        
         if not token:
             return jsonify({'error': 'Token is missing!'}), 405
 
         try:
-            data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            data = decode_jwt(token)
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token has expired!'}), 403
-        except jwt.InvalidTokenError:
-            return jsonify({'error': 'Invalid token!'}), 403
+        except Exception as e:
+            return jsonify({'error': 'Token is invalid!', 'details': str(e)}), 403
 
         name = data.get('user')
-        user_id = data.get('id')
-        return f(name=name, id=user_id, *args, **kwargs)
-
+        id = data.get('id') 
+        return f(name=name, id=id, *args, **kwargs)
+    
     return decorated
-
 @app.route("/")
 def index():
     return """
     <h1>Welcome!</h1>
-    <div><a href='/order/time'>タイム</a></div>
-    <div><a href='/order/trend'>トレンド</a></div>
+    <div><a href='http://127.0.0.1:5000/order/time'>タイム</a></div>
+    <a href='http://127.0.0.1:5000/order/trend'>トレンド</a>
     """
 
-# 時間順のカード情報を取得
-@app.route("/order/time", methods=['GET'])
+
+@app.route("/order/time",methods=['GET'])
 def get_order_time():
-    connection = get_db_connection()
-    try:
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT 
-                c.cardid,
-                c.name,
-                c.detail,
-                c.tag,
-                c.heart,
-                c.time,
-                c.userid,
-                a.user AS username
-            FROM 
-                card c
-            JOIN 
-                account a ON c.userid = a.userid
-            ORDER BY 
-                c.time DESC;
-        """)
-        data = cursor.fetchall()
+    cur = mysql.connection.cursor()
+    cur.execute("""
+    SELECT 
+        c.cardid,
+        c.name,
+        c.detail,
+        c.tag,
+        c.heart,
+        c.time,
+        c.userid,
+        a.user AS username
+    FROM 
+        card c
+    JOIN 
+        account a ON c.userid = a.userid
+    ORDER BY 
+        c.time DESC;  -- timeの降順で並べる
+    """)
+    data = cur.fetchall()
+    cur.close()
+    return jsonify(data)
 
-        # ローカル形式にデータを変換
-        formatted_data = []
-        for row in data:
-            # 時間のフォーマットを変更
-            time = row['time'].strftime("%a, %d %b %Y %H:%M:%S GMT") if isinstance(row['time'], datetime.datetime) else row['time']
-            
-            # ローカルデータ形式に合わせて整形
-            formatted_data.append([
-                row['cardid'],
-                row['name'],
-                row['detail'],
-                row['tag'],
-                row['heart'],
-                time,
-                row['userid'],
-                row['username']
-            ])
-
-        return jsonify(formatted_data)
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        connection.close()
-
-
-# いいね数順のカード情報を取得
-@app.route("/order/trend", methods=['GET'])
+@app.route("/order/trend",methods=['GET'])
 def get_order_trend():
-    connection = get_db_connection()
-    try:
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT 
-                c.cardid,
-                c.name,
-                c.detail,
-                c.tag,
-                c.heart,
-                c.time,
-                c.userid,
-                a.user AS username
-            FROM 
-                card c
-            JOIN 
-                account a ON c.userid = a.userid
-            ORDER BY 
-                c.heart DESC;
-        """)
-        data = cursor.fetchall()
-        # ローカル形式にデータを変換
-        formatted_data = []
-        for row in data:
-            # 時間のフォーマットを変更
-            time = row['time'].strftime("%a, %d %b %Y %H:%M:%S GMT") if isinstance(row['time'], datetime.datetime) else row['time']
-            
-            # ローカルデータ形式に合わせて整形
-            formatted_data.append([
-                row['cardid'],
-                row['name'],
-                row['detail'],
-                row['tag'],
-                row['heart'],
-                time,
-                row['userid'],
-                row['username']
-            ])
+    cur = mysql.connection.cursor()
+    cur.execute("""
+    SELECT 
+        c.cardid,
+        c.name,
+        c.detail,
+        c.tag,
+        c.heart,
+        c.time,
+        c.userid,
+        a.user AS username
+    FROM 
+        card c
+    JOIN 
+        account a ON c.userid = a.userid
+    ORDER BY heart DESC
+    """)
+    data = cur.fetchall()
+    cur.close()
+    return jsonify(data)
 
-        return jsonify(formatted_data)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        connection.close()
-
-# アカウント認証
-@app.route('/account/verification', methods=['POST'])
+@app.route('/account/verification',methods = ['POST'])
 def account_verification():
     data = request.json
+    {'success':False}
     if request.method == 'POST':
         user = data['data'][0]
         pw = data['data'][1]
         
-        connection = get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("SELECT user, pas FROM account WHERE user = %s", (user,))
-        data2 = cursor.fetchall()
-        cursor.close()
-
+        cur = mysql.connection.cursor()
+        
+        cur.execute("SELECT user, pas from account where user = %s",(user,))
+        data2 = cur.fetchall()
+        cur.close()
         if data2:
             if data2[0][1] == pw:
-                return jsonify({'success': True, 'name': user}), 201
+                print(jsonify(data2[0][1]))
+                print(pw)
+                return jsonify({'success':True,'name':user}),201
             else:
-                return jsonify({'success': False}), 202
-        return jsonify({'success': False}), 404
-
-# アカウント作成
-@app.route('/account/add', methods=['POST'])
+                return jsonify({'success':False}),202
+    
+@app.route('/account/add',methods = ['POST'])
 def account_add():
+    cur = mysql.connection.cursor()
     data = request.json
+    {'success':False}
     user = data['data'][0]
     pw = data['data'][1]
-    
-    connection = get_db_connection()
-    cursor = connection.cursor()
-    cursor.execute('INSERT INTO account(user, pas) VALUES(%s, %s)', (user, pw))
-    connection.commit()
-
-    if cursor.rowcount == 1:
+    cur.execute('INSERT INTO account(user,pas) VALUES(%s,%s)',(user,pw))
+    mysql.connection.commit()
+    if cur.rowcount == 1:
         return jsonify({'success': True, 'name': user}), 200
     else:
         return jsonify({'success': False}), 210
-
-# ログイン処理
+    
+@app.route('/card/add',methods = ['POST'])
+def card_add():
+    cur = mysql.connection.cursor()
+    data = request.json
+    {'success':False}
+    name = data.get('name')
+    detail = data.get('detail')
+    tag = json.dumps(data.get('tag'))
+    userid = data.get('userid')
+    cur.execute('INSERT INTO card(name,detail,tag,userid) VALUES (%s,%s,%s,%s)',(name,detail,tag,userid))
+    mysql.connection.commit()
+    if cur.rowcount == 1:
+        return jsonify({'succeess':True,'name':name}),200
+    else:
+        return jsonify({'success':False}),210
+    
 @app.route('/login', methods=['POST'])
 def login():
+    cur = mysql.connection.cursor()
     data = request.json
+    
     try:
         if request.method == 'POST':
             user = data.get('name')
             pw = data.get('password')
 
-            # データベース接続を開く
-            connection = get_db_connection()
-            cursor = connection.cursor()
-            cursor.execute("SELECT user, pas, userid FROM account WHERE user = %s", (user,))
-            data2 = cursor.fetchall()
-            cursor.close()
-
-            # ログ出力: データベースの結果を確認
-            logger.debug(f"Database query result: {data2}")
+            cur.execute("SELECT user, pas, userid FROM account WHERE user = %s", (user,))
+            data2 = cur.fetchall()
+            cur.close()
 
             if data2:
                 if data2[0][1] == pw:
-                    # JWTを生成
-                    id = data2[0][2]
+                    if not user or not pw:
+                        return jsonify({'error': 'user and pw are required.'}), 400
+
+                    # JWTを作成 (有効期限を10秒に設定)
+                    id = data2[0][2]  # idを取得
                     payload = {
                         'user': user,
-                        'id': id,
-                        'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=10)  # 有効期限
+                        'id': id,  # idをペイロードに追加
+                        'exp': datetime.datetime.utcnow() + datetime.timedelta(seconds=10000000)  # 現在時刻 +
                     }
                     token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
 
-                    # トークンの型確認
                     if isinstance(token, bytes):
                         token = token.decode('utf-8')
 
@@ -260,17 +221,21 @@ def login():
 
                     return response
                 else:
-                    logger.error(f"Invalid password for user: {user}")
-                    return jsonify({'success': False}), 401  # Unauthorized
-            else:
-                logger.error(f"User not found: {user}")
-                return jsonify({'error': 'Invalid credentials'}), 404  # Not Found
-
+                    return jsonify({'success': False}), 202
     except Exception as e:
-        logger.error(f"Error during login: {str(e)}")  # エラー内容をログに記録
         return jsonify({'error': str(e), 'success': False}), 500
-    
-# ログアウト処理
+
+
+@app.route('/special', methods=['GET'])
+@token_required
+def special():
+    return jsonify({'message': 'This is a special page for logged-in users!'})
+
+@app.route('/confirmation_name', methods=['GET'])
+@token
+def required(name,id):
+    return jsonify({'name': name,'id':id})
+
 @app.route('/logout', methods=['POST'])
 def logout():
     try:
@@ -280,17 +245,93 @@ def logout():
     except Exception as e:
         return jsonify({'error': str(e), 'success': False}), 500
 
-# 特別ページ（認証されたユーザー専用）
-@app.route('/special', methods=['GET'])
-@token_required
-def special():
-    return jsonify({'message': 'This is a special page for logged-in users!'})
+@app.route('/mypage', methods=['GET'])
+def get_mypage():
+    try:
+        # クエリパラメータからデータを取得
+        name = request.args.get('name')
+        user_id = request.args.get('id')
 
-# ユーザー名とIDを取得するためのエンドポイント
-@app.route('/confirmation_name', methods=['GET'])
-@token
-def required(name, id):
-    return jsonify({'name': name, 'id': id})
+        if not name or not user_id:
+            return jsonify({"error": "入力が無効です"}), 400
+
+        cur = mysql.connection.cursor()
+        
+        # 投稿数とheartの合計を取得
+        query = """
+            SELECT COUNT(name) AS sum, COALESCE(SUM(heart), 0) AS total_heart
+            FROM card
+            WHERE userid = (
+                SELECT userid
+                FROM account
+                WHERE user = %s AND userid = %s
+            );
+        """
+        cur.execute(query, (name, user_id))
+        
+        # データの取得
+        result = cur.fetchone()
+        cur.close()
+        
+        # 結果をJSON形式で返す
+        return jsonify(result)
+    
+    except Exception as e:
+        return jsonify({"error": "サーバーエラーが発生しました", "details": str(e)}), 500
+
+@app.route('/card/detail',methods=['GET'])
+def detail():
+    try:
+        card_id = request.args.get('id')
+        if not card_id:
+            return jsonify({"error":"入力が無効です"}),400
+        cur = mysql.connection.cursor()
+        query ="""
+        SELECT card.*, account.user
+        FROM card
+        JOIN account ON card.userid = account.userid
+        WHERE card.cardid = %s;
+        """
+        cur.execute(query,(card_id,))
+        result = cur.fetchone()
+        cur.close()
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": "サーバーエラーが発生しました", "details": str(e)}), 500
+@app.route('/mk',methods =['GET'])
+def mk():
+    try:
+        cur = mysql.connection.cursor()
+        query ="""
+        select detail from card where cardid = 8;
+        """
+        cur.execute(query)
+        result = cur.fetchone()
+        cur.close()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error":str(e)}),500
+    
+@app.route('/user_ranking',methods=['GET'])
+def rank():
+    try:
+        cur = mysql.connection.cursor()
+        query = """
+        SELECT account.user, SUM(card.heart) AS total_hearts
+        FROM card
+        JOIN account ON card.userid = account.userid
+        GROUP BY account.user
+        ORDER BY total_hearts DESC
+        LIMIT 3;
+        """
+        cur.execute(query)
+        result = cur.fetchall()
+        cur.close()
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": "サーバーエラーが発生しました", "details": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
