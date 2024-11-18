@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 SECRET_KEY = "sadjfljsiejfoj"
-CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}})
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "https://ambitious-beach-0099da600.5.azurestaticapps.net"}})
 
 # Azure Database for MySQL 接続設定
 DB_HOST = 'qiita.mysql.database.azure.com'  # Azure MySQL のホスト
